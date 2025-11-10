@@ -97,12 +97,12 @@ class PersonalDetailsSerializer(RootFormStepBaseSerializer):
 class ExamDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExamDetail
-        fields = "__all__"
-        read_only_fields = ["id", "created_at", "updated_at"]
+        fields = ["exam_type", "passing_date", "attempt_count"]
+        read_only_fields = ["service_details"]
 
 
 class ServiceDetailsSerializer(RootFormStepBaseSerializer):
-    exams = ExamDetailSerializer(many=True, required=False)
+    exams = ExamDetailSerializer(many=True)
 
     class Meta(RootFormStepBaseSerializer.Meta):
         model = ServiceDetails

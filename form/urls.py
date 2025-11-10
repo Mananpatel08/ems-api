@@ -8,9 +8,9 @@ from .views import (
 app_name = "form"
 router = DefaultRouter()
 
-router.register(r"", RootFormViewSet, basename="root-form")
 router.register(r"personal-details", PersonalDetailsViewSet, basename="personal-details")
 router.register(r"service-details", ServiceDetailsViewSet, basename="service-details")
+router.register(r"", RootFormViewSet, basename="root-form")
 
 urlpatterns = []
 urlpatterns += router.urls

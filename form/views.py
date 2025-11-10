@@ -149,7 +149,7 @@ class ServiceDetailsViewSet(viewsets.ModelViewSet):
         return context
 
     @atomic
-    def create(self, request):
+    def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
