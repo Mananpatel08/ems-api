@@ -76,3 +76,10 @@ class CustomUserSerializer(serializers.ModelSerializer):
         if form:
             return form.pk
         return ""
+
+
+class CreateUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = "__all__"
+        read_only_fields = ["id", "date_joined", "last_login"]

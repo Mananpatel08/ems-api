@@ -1,11 +1,14 @@
-from .serializer import UserSerializer, CustomUserSerializer
+from .serializer import UserSerializer, CustomUserSerializer, CreateUserSerializer
 from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken, TokenError
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework.exceptions import ValidationError
 from rest_framework.decorators import action
+from django.db import transaction
 from services.utils import get_response
+from .models import CustomUser
+from .enums import UserRoleEnum
 
 
 class UserViewSet(viewsets.GenericViewSet):
@@ -133,4 +136,74 @@ class UserViewSet(viewsets.GenericViewSet):
             is_success=True,
             message="User profile fetched successfully.",
             data=serializer.data,
+        )
+
+    @action(methods=["post"], detail=False, url_path="add", url_name="add")
+    @transaction.atomic
+    def create_user(self, request):
+        try:
+            data = request.data
+
+            email = data.get("email")
+            if not email:
+                return get_response(
+                    is_success=False,
+                    message="Email is required.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if CustomUser.objects.filter(email=email).exists():
+                return get_response(
+                    is_success=False,
+                    message="This email already exists.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+
+            first_name = data.get("first_name", "")
+            last_name = data.get("last_name", "")
+            password = data.get("password") or "Wedo@123"
+
+            user = CustomUser.objects.create_user(
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                user_role=UserRoleEnum.USER.value,
+                is_active=True,
+            )
+
+            serializer = CreateUserSerializer(user)
+
+            return get_response(
+                is_success=True,
+                message="User created successfully.",
+                data=serializer.data,
+                status_code=status.HTTP_201_CREATED,
+            )
+
+        except Exception as e:
+            return get_response(
+                is_success=False,
+                message="Error creating user.",
+                errors=str(e),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+    @action(methods=["get"], detail=False, url_path="users", url_name="users")
+    def list_user(self, request):
+        queryset = CustomUser.objects.filter(
+            user_role=UserRoleEnum.USER.value,
+            is_active=True,
+            is_superuser=False,
+        )
+
+        # Optional: apply pagination if available
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = CustomUserSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = CustomUserSerializer(queryset, many=True)
+        return get_response(
+            is_success=True, message="Users fetched successfully.", data=serializer.data
         )
