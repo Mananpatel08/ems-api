@@ -13,6 +13,9 @@ from .serializer import (
     PersonalDetailsSerializer,
     ServiceDetailsSerializer,
 )
+from services.pagination import CustomPagination
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
 from services.utils import get_response
 
 
@@ -20,6 +23,9 @@ class RootFormViewSet(viewsets.ModelViewSet):
     queryset = RootForm.objects.all()
     serializer_class = RootFormSerializer
     permission_classes = [IsAuthenticated]
+    
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter] 
+    filterset_fields = ["status"]
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -69,6 +75,33 @@ class RootFormViewSet(viewsets.ModelViewSet):
             errors=serializer.errors,
             status_code=status.HTTP_400_BAD_REQUEST,
         )
+        
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        filters = {
+            "status__in": request.GET.getlist("status[]"),
+        }
+        for field, values in filters.items():
+            if values:
+                queryset = queryset.filter(**{field: values})
+                
+        queryset = self.filter_queryset(queryset)
+        
+        paginator = CustomPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data, message="Form list fetched successfully")
+         
+        serializer = self.get_serializer(queryset, many=True)
+        return get_response(
+            is_success=True,
+            message="Root form list fetched successfully",
+            data=serializer.data,
+            status_code=status.HTTP_200_OK,
+        )
+        
 
 
 class PersonalDetailsViewSet(viewsets.ModelViewSet):

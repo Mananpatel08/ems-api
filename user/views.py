@@ -9,11 +9,20 @@ from django.db import transaction
 from services.utils import get_response
 from .models import CustomUser
 from .enums import UserRoleEnum
+from services.pagination import CustomPagination
+from rest_framework.filters import SearchFilter
 
 
 class UserViewSet(viewsets.GenericViewSet):
     permission_classes = [AllowAny]
     serializer_class = UserSerializer
+
+    filter_backends = [SearchFilter]
+    search_fields = [
+        "first_name",
+        "last_name",
+        "email",
+    ]
 
     @action(detail=False, methods=["post"], url_path="login", url_name="user-login")
     def login(self, request, *args, **kwargs):
@@ -30,6 +39,8 @@ class UserViewSet(viewsets.GenericViewSet):
 
         user = data["user"]
         refresh = RefreshToken.for_user(user)
+        refresh["user_role"] = user.user_role
+
         access = str(refresh.access_token)
         user_data = CustomUserSerializer(user).data
 
@@ -197,13 +208,20 @@ class UserViewSet(viewsets.GenericViewSet):
             is_superuser=False,
         )
 
-        # Optional: apply pagination if available
-        page = self.paginate_queryset(queryset)
+        queryset = self.filter_queryset(queryset)
+
+        paginator = CustomPagination()
+        page = paginator.paginate_queryset(queryset, request)
+
         if page is not None:
             serializer = CustomUserSerializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            return paginator.get_paginated_response(
+                serializer.data, message="Users fetched successfully."
+            )
 
         serializer = CustomUserSerializer(queryset, many=True)
         return get_response(
-            is_success=True, message="Users fetched successfully.", data=serializer.data
+            is_success=True,
+            message="Users fetched successfully.",
+            data=serializer.data,
         )
