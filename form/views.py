@@ -1,11 +1,15 @@
 from django.db.transaction import atomic
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status, viewsets
-from rest_framework.permissions import IsAuthenticated
-from .models import (
-    RootForm,
-    PersonalDetails,
-    ServiceDetails,
-)
+from rest_framework.filters import SearchFilter, OrderingFilter
+from user.authentication import CustomUserIsAuthenticated
+
+from services.pagination import CustomPagination
+from services.utils import get_response
+from services.permissions import allow_permission
+from user.enums import UserRoleEnum
+
+from .models import RootForm, PersonalDetails, ServiceDetails
 from .serializer import (
     RootFormSerializer,
     RootFormDetailSerializer,
@@ -13,18 +17,20 @@ from .serializer import (
     PersonalDetailsSerializer,
     ServiceDetailsSerializer,
 )
-from services.pagination import CustomPagination
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.filters import SearchFilter, OrderingFilter
-from services.utils import get_response
 
 
 class RootFormViewSet(viewsets.ModelViewSet):
     queryset = RootForm.objects.all()
     serializer_class = RootFormSerializer
-    permission_classes = [IsAuthenticated]
-    
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter] 
+    permission_classes = [CustomUserIsAuthenticated]
+
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    search_fields = [
+        "form_number",
+        "user__email",
+        "user__first_name",
+        "user__last_name",
+    ]
     filterset_fields = ["status"]
 
     def get_serializer_class(self):
@@ -75,7 +81,8 @@ class RootFormViewSet(viewsets.ModelViewSet):
             errors=serializer.errors,
             status_code=status.HTTP_400_BAD_REQUEST,
         )
-        
+
+    @allow_permission([UserRoleEnum.SUPER_ADMIN])
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         filters = {
@@ -84,16 +91,18 @@ class RootFormViewSet(viewsets.ModelViewSet):
         for field, values in filters.items():
             if values:
                 queryset = queryset.filter(**{field: values})
-                
+
         queryset = self.filter_queryset(queryset)
-        
+
         paginator = CustomPagination()
         page = paginator.paginate_queryset(queryset, request)
-        
+
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return paginator.get_paginated_response(serializer.data, message="Form list fetched successfully")
-         
+            return paginator.get_paginated_response(
+                serializer.data, message="Form list fetched successfully"
+            )
+
         serializer = self.get_serializer(queryset, many=True)
         return get_response(
             is_success=True,
@@ -101,13 +110,12 @@ class RootFormViewSet(viewsets.ModelViewSet):
             data=serializer.data,
             status_code=status.HTTP_200_OK,
         )
-        
 
 
 class PersonalDetailsViewSet(viewsets.ModelViewSet):
     queryset = PersonalDetails.objects.all()
     serializer_class = PersonalDetailsSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [CustomUserIsAuthenticated]
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -174,7 +182,7 @@ class PersonalDetailsViewSet(viewsets.ModelViewSet):
 class ServiceDetailsViewSet(viewsets.ModelViewSet):
     queryset = ServiceDetails.objects.all()
     serializer_class = ServiceDetailsSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [CustomUserIsAuthenticated]
 
     def get_serializer_context(self):
         context = super().get_serializer_context()

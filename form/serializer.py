@@ -34,9 +34,11 @@ class RootFormStepBaseSerializer(serializers.ModelSerializer):
         fields = "__all__"
         extra_kwargs = {"root_form": {"required": False}}
         next_step = FormStep.SERVICE_DETAILS
+        is_final_step = False
 
     def update_current_step(self, root_form):
-        if self.Meta.next_step == FormStep.SERVICE_DETAILS:
+        # Only mark as completed if this is the final step
+        if self.Meta.is_final_step:
             root_form.status = RootForm.Status.COMPLETED
             root_form.completed_at = now()
         root_form.current_step = self.Meta.next_step
@@ -106,6 +108,8 @@ class ServiceDetailsSerializer(RootFormStepBaseSerializer):
 
     class Meta(RootFormStepBaseSerializer.Meta):
         model = ServiceDetails
+        next_step = FormStep.SERVICE_DETAILS
+        is_final_step = True
 
     def create(self, validated_data):
         exams = validated_data.pop("exams", [])

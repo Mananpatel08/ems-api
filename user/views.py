@@ -1,20 +1,28 @@
-from .serializer import UserSerializer, CustomUserSerializer, CreateUserSerializer
+from django.db import transaction
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
+from rest_framework.filters import SearchFilter
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken, TokenError
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
-from rest_framework.exceptions import ValidationError
-from rest_framework.decorators import action
-from django.db import transaction
-from services.utils import get_response
-from .models import CustomUser
-from .enums import UserRoleEnum
+
 from services.pagination import CustomPagination
-from rest_framework.filters import SearchFilter
+from services.utils import get_response
+from services.permissions import allow_permission
+
+from .authentication import CustomUserIsAuthenticated
+from .enums import UserRoleEnum
+from .models import CustomUser
+from .serializer import (
+    UserSerializer,
+    CustomUserSerializer,
+    CustomUserLiteSerializer,
+)
 
 
 class UserViewSet(viewsets.GenericViewSet):
-    permission_classes = [AllowAny]
+    permission_classes = [CustomUserIsAuthenticated]
     serializer_class = UserSerializer
 
     filter_backends = [SearchFilter]
@@ -24,7 +32,13 @@ class UserViewSet(viewsets.GenericViewSet):
         "email",
     ]
 
-    @action(detail=False, methods=["post"], url_path="login", url_name="user-login")
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="login",
+        url_name="user-login",
+        permission_classes=[AllowAny],
+    )
     def login(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -42,9 +56,9 @@ class UserViewSet(viewsets.GenericViewSet):
         refresh["user_role"] = user.user_role
 
         access = str(refresh.access_token)
-        user_data = CustomUserSerializer(user).data
+        user_data = CustomUserLiteSerializer(user, context={"request": request}).data
 
-        response = get_response(
+        return get_response(
             is_success=True,
             message="Login successful",
             data={
@@ -54,18 +68,6 @@ class UserViewSet(viewsets.GenericViewSet):
             },
             status_code=status.HTTP_200_OK,
         )
-
-        # response.set_cookie(
-        #     key="access_token",
-        #     value=access,
-        #     httponly=True,
-        #     secure=False,
-        #     samesite="Lax",
-        #     max_age=60 * 60 * 24 * 7 * 2,
-        #     path="/",
-        # )
-
-        return response
 
     @action(detail=False, methods=["post"], url_path="logout", url_name="user-logout")
     def logout(self, request, *args, **kwargs):
@@ -82,9 +84,7 @@ class UserViewSet(viewsets.GenericViewSet):
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
-        response = get_response(is_success=True, message="Logout Successful")
-        # response.delete_cookie("access_token", path="/")
-        return response
+        return get_response(is_success=True, message="Logout Successful")
 
     @action(detail=False, methods=["post"], url_path="refresh", url_name="user-refresh")
     def refresh(self, request, *args, **kwargs):
@@ -140,16 +140,53 @@ class UserViewSet(viewsets.GenericViewSet):
                 message="Invalid token.", status_code=status.HTTP_400_BAD_REQUEST
             )
 
-    @action(detail=False, methods=["get"], url_path="me", url_name="me")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="me",
+        url_name="me",
+    )
     def user_profile(self, request):
-        serializer = CustomUserSerializer(request.user)
+        serializer = CustomUserLiteSerializer(
+            request.user, context={"request": request}
+        )
         return get_response(
             is_success=True,
             message="User profile fetched successfully.",
             data=serializer.data,
         )
 
+    @action(
+        detail=False,
+        methods=["put", "patch"],
+        url_path="update-profile",
+        url_name="update-profile",
+    )
+    def update_profile(self, request):
+        serializer = CustomUserSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+            return get_response(
+                is_success=True,
+                message="Profile updated successfully.",
+                data=serializer.data,
+            )
+
+        return get_response(
+            is_success=False,
+            status_code=400,
+            message="Validation error.",
+            errors=serializer.errors,
+        )
+
     @action(methods=["post"], detail=False, url_path="add", url_name="add")
+    @allow_permission([UserRoleEnum.SUPER_ADMIN])
     @transaction.atomic
     def create_user(self, request):
         try:
@@ -183,7 +220,7 @@ class UserViewSet(viewsets.GenericViewSet):
                 is_active=True,
             )
 
-            serializer = CreateUserSerializer(user)
+            serializer = CustomUserSerializer(user, context={"request": request})
 
             return get_response(
                 is_success=True,
@@ -201,6 +238,7 @@ class UserViewSet(viewsets.GenericViewSet):
             )
 
     @action(methods=["get"], detail=False, url_path="users", url_name="users")
+    @allow_permission([UserRoleEnum.SUPER_ADMIN])
     def list_user(self, request):
         queryset = CustomUser.objects.filter(
             user_role=UserRoleEnum.USER.value,
@@ -214,14 +252,53 @@ class UserViewSet(viewsets.GenericViewSet):
         page = paginator.paginate_queryset(queryset, request)
 
         if page is not None:
-            serializer = CustomUserSerializer(page, many=True)
+            serializer = CustomUserLiteSerializer(
+                page, many=True, context={"request": request}
+            )
             return paginator.get_paginated_response(
                 serializer.data, message="Users fetched successfully."
             )
 
-        serializer = CustomUserSerializer(queryset, many=True)
+        serializer = CustomUserLiteSerializer(
+            queryset, many=True, context={"request": request}
+        )
         return get_response(
             is_success=True,
             message="Users fetched successfully.",
             data=serializer.data,
         )
+
+    @action(
+        methods=["get"],
+        detail=False,
+        url_path="retrieve-user/(?P<user_id>[^/.]+)",
+        url_name="retrieve-user",
+    )
+    @allow_permission([UserRoleEnum.SUPER_ADMIN])
+    def retrieve_user(self, request, user_id=None):
+        try:
+            user = CustomUser.objects.get(
+                id=user_id,
+                is_active=True,
+            )
+
+            serializer = CustomUserLiteSerializer(user, context={"request": request})
+            return get_response(
+                is_success=True,
+                message="User retrieved successfully.",
+                data=serializer.data,
+            )
+
+        except CustomUser.DoesNotExist:
+            return get_response(
+                is_success=False,
+                message="User not found.",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            return get_response(
+                is_success=False,
+                message="Error retrieving user.",
+                errors=str(e),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )

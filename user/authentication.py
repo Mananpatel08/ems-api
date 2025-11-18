@@ -1,13 +1,21 @@
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework import exceptions
+import hashlib
 
-class JWTAuthenticationFromCookie(JWTAuthentication):
-    def authenticate(self, request):
-        raw_token = request.COOKIES.get("access_token")
-        if not raw_token:
-            return None
-        try:
-            validated_token = self.get_validated_token(raw_token)
-        except Exception:
-            raise exceptions.AuthenticationFailed("Invalid token")
-        return self.get_user(validated_token), validated_token
+from django.core.cache import cache
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.permissions import IsAuthenticated
+
+
+class CustomUserIsAuthenticated(IsAuthenticated):
+    def has_permission(self, request, view):
+        is_authenticated = super().has_permission(request, view)
+        if not is_authenticated:
+            return False
+        is_allowed_user = True
+        token = request.auth.get("jti")
+        cache_key = hashlib.sha256(token.encode()).hexdigest()
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            raise AuthenticationFailed("Token is expired")
+        else:
+            is_allowed_user = True
+        return is_allowed_user

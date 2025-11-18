@@ -3,7 +3,12 @@ import hashlib
 from django.contrib.auth import authenticate
 from django.core.cache import cache
 from rest_framework import serializers
-from rest_framework_simplejwt.tokens import AccessToken, RefreshToken, TokenError
+from rest_framework_simplejwt.tokens import (
+    AccessToken,
+    RefreshToken,
+    TokenError,
+)
+
 from .models import CustomUser
 
 
@@ -56,7 +61,34 @@ class UserSerializer(serializers.Serializer):
 
 
 class CustomUserSerializer(serializers.ModelSerializer):
+    profile_photo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomUser
+        fields = [
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+            "profile_photo",
+            "user_role",
+            "phone_number",
+            "date_joined",
+            "is_active",
+            "last_login"
+        ]
+        read_only_fields = ["id", "date_joined", "last_login"]
+
+    def get_profile_photo(self, obj):
+        request = self.context.get("request")
+        if obj.profile_photo:
+            return request.build_absolute_uri(obj.profile_photo.url)
+        return None
+
+
+class CustomUserLiteSerializer(serializers.ModelSerializer):
     form_id = serializers.SerializerMethodField()
+    profile_photo = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
@@ -69,19 +101,20 @@ class CustomUserSerializer(serializers.ModelSerializer):
             "form_id",
             "user_role",
             "date_joined",
-            "profile_photo",
         )
         read_only_fields = ("email", "user_role")
 
+    def get_profile_photo(self, obj):
+        request = self.context.get("request")
+        if obj.profile_photo:
+            return request.build_absolute_uri(obj.profile_photo.url)
+        return None
+
     def get_form_id(self, instance):
+        # Handle AnonymousUser or users without rootform_created_by attribute
+        if not hasattr(instance, "rootform_created_by"):
+            return ""
         form = instance.rootform_created_by.all().order_by("-created_at").first()
         if form:
             return form.pk
         return ""
-
-
-class CreateUserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CustomUser
-        fields = "__all__"
-        read_only_fields = ["id", "date_joined", "last_login"]
