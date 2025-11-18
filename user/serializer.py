@@ -68,7 +68,8 @@ class CustomUserSerializer(serializers.ModelSerializer):
             "profile_photo",
             "form_id",
             "user_role",
-            "date_joined"
+            "date_joined",
+            "profile_photo",
         )
         read_only_fields = ("email", "user_role")
 

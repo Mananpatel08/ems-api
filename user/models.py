@@ -45,10 +45,10 @@ class CustomUser(AbstractBaseUser, PermissionsMixin, BaseCoreModel):
     last_name = models.CharField(max_length=50, blank=True)
     phone_number = models.CharField(max_length=15, blank=True)
     profile_photo = ImageField(
-        upload_to="user_profile",
+        upload_to="users",
         validators=[validate_file_size],
         blank=True,
-        default="user_profile/user.jpg",
+        default="users/user.png",
     )
     date_joined = models.DateTimeField(default=timezone.now)
     user_role = models.CharField(

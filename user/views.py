@@ -55,15 +55,15 @@ class UserViewSet(viewsets.GenericViewSet):
             status_code=status.HTTP_200_OK,
         )
 
-        response.set_cookie(
-            key="access_token",
-            value=access,
-            httponly=True,
-            secure=False,
-            samesite="Lax",
-            max_age=60 * 60 * 24 * 7 * 2,
-            path="/",
-        )
+        # response.set_cookie(
+        #     key="access_token",
+        #     value=access,
+        #     httponly=True,
+        #     secure=False,
+        #     samesite="Lax",
+        #     max_age=60 * 60 * 24 * 7 * 2,
+        #     path="/",
+        # )
 
         return response
 
@@ -83,7 +83,7 @@ class UserViewSet(viewsets.GenericViewSet):
             )
 
         response = get_response(is_success=True, message="Logout Successful")
-        response.delete_cookie("access_token", path="/")
+        # response.delete_cookie("access_token", path="/")
         return response
 
     @action(detail=False, methods=["post"], url_path="refresh", url_name="user-refresh")
